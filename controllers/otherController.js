@@ -9,10 +9,11 @@ export const contact = catchAsyncError(async (req, res, next) => {
   if (!name || !email || !message)
     return next(new ErrorHandler("All fields are mandatory", 400));
 
-    const to = process.env.MY_MAIL;
-    const subject = "contact from CourseBundler";
-    const text = `I am ${name} and my email is ${email}. \n${message}` ;
-    await sendEmail(to,subject,text);
+  const to = process.env.MY_MAIL;
+  const subject = "Contact from CourseBundler";
+  const text = `I am ${name} and my Email is ${email}. \n${message}`;
+
+  await sendEmail(to, subject, text);
 
   res.status(200).json({
     success: true,
@@ -38,22 +39,15 @@ export const courseRequest = catchAsyncError(async (req, res, next) => {
 });
 
 export const getDashboardStats = catchAsyncError(async (req, res, next) => {
-  // take all stats
-  // sort on basis of created at in descending order and want only latest 12
   const stats = await Stats.find({}).sort({ createdAt: "desc" }).limit(12);
 
   const statsData = [];
 
-  // pushing the stats in statsData array
-  // 'unshift' adds in the starting of the array and 'push' add in the end
   for (let i = 0; i < stats.length; i++) {
     statsData.unshift(stats[i]);
   }
-
-  // need this much more to add in statsData to show complete 12 months
   const requiredSize = 12 - stats.length;
 
-  // add empty stat in remaining
   for (let i = 0; i < requiredSize; i++) {
     statsData.unshift({
       users: 0,
@@ -62,7 +56,6 @@ export const getDashboardStats = catchAsyncError(async (req, res, next) => {
     });
   }
 
-  // taking from last element of statsData
   const usersCount = statsData[11].users;
   const subscriptionCount = statsData[11].subscription;
   const viewsCount = statsData[11].views;
@@ -74,13 +67,10 @@ export const getDashboardStats = catchAsyncError(async (req, res, next) => {
     viewsProfit = true,
     subscriptionProfit = true;
 
-    // compare with last to last month stat to get profit loss of users in the last month
-    // if last to last month zero then 100% increase
   if (statsData[10].users === 0) usersPercentage = usersCount * 100;
   if (statsData[10].views === 0) viewsPercentage = viewsCount * 100;
   if (statsData[10].subscription === 0)
     subscriptionPercentage = subscriptionCount * 100;
-    // else take difference
   else {
     const difference = {
       users: statsData[11].users - statsData[10].users,
@@ -88,13 +78,10 @@ export const getDashboardStats = catchAsyncError(async (req, res, next) => {
       subscription: statsData[11].subscription - statsData[10].subscription,
     };
 
-    // and divide by last to last month data and multiply by 100 to get percentage
-    // basic maths to calculate the percentage
     usersPercentage = (difference.users / statsData[10].users) * 100;
     viewsPercentage = (difference.views / statsData[10].views) * 100;
     subscriptionPercentage =
       (difference.subscription / statsData[10].subscription) * 100;
-      // if percentage negative that means loss to  profit = false
     if (usersPercentage < 0) usersProfit = false;
     if (viewsPercentage < 0) viewsProfit = false;
     if (subscriptionPercentage < 0) subscriptionProfit = false;
@@ -102,8 +89,8 @@ export const getDashboardStats = catchAsyncError(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    stats: statsData,//whole year stats
-    usersCount,//specific last month counts
+    stats: statsData,
+    usersCount,
     subscriptionCount,
     viewsCount,
     subscriptionPercentage,

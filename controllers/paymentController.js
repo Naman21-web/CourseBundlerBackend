@@ -1,100 +1,107 @@
 import { catchAsyncError } from "../middlewares/catchAsyncError.js";
 import { User } from "../models/User.js";
-import { instance } from "../server.js";
 import ErrorHandler from "../utils/errorHandler.js";
-import crypto from "crypto"
+import { instance } from "../server.js";
+import crypto from "crypto";
 import { Payment } from "../models/Payment.js";
 
-export const buySubscription = catchAsyncError(async(req,res,next) => {
-    const user = await User.findById(req.user._id);
-    if(user.role==="admin") return next(new ErrorHandler("Admin cant buy subscriprtion",400));
+export const buySubscription = catchAsyncError(async (req, res, next) => {
+  const user = await User.findById(req.user._id);
 
-    const plan_id = process.env.PLAN_ID || "plan_LWaKkRaJKTI3QG"
+  if (user.role === "admin")
+    return next(new ErrorHandler("Admin can't buy subscription", 400));
 
-    const subscription = await instance.subscriptions.create({
-        plan_id,
-        customer_notify:1,
-        total_count: 12,//as 12 months
-    })
+  const plan_id = process.env.PLAN_ID || "plan_JuJevKAcuZdtRO";
 
-    user.subscription.id = subscription.id;
-    user.subscription.status = subscription.status;
+  const subscription = await instance.subscriptions.create({
+    plan_id,
+    customer_notify: 1,
+    total_count: 12,
+  });
 
-    await user.save();
+  user.subscription.id = subscription.id;
 
-    res.status(201).json({
-        success:true,
-        subscriptionId:subscription.id,
-    })
+  user.subscription.status = subscription.status;
+
+  await user.save();
+
+  res.status(201).json({
+    success: true,
+    subscriptionId: subscription.id,
+  });
 });
 
-export const paymentVerification = catchAsyncError(async(req,res,next) => {
-    const {razorpay_signature, razorpay_payment_id, razorpay_subscription_id} = req.body;
-    //razorpay automatically sends ths 3 things when we call this route
+export const paymentVerification = catchAsyncError(async (req, res, next) => {
+  const { razorpay_signature, razorpay_payment_id, razorpay_subscription_id } =
+    req.body;
 
-    const user = await User.findById(req.user._id);
-    const subscription_id = user.subscription_id;
-    // razorpay_payment_id+"|"+razorpay_subscription_id string of this created and we applied shark256 algo in it
-    const generated_signature = crypto.createHmac("shark256",process.env.RAZORPAY_API_SECRET)
-    .update(razorpay_payment_id+"|"+razorpay_subscription_id,"utf-8").digest("hex");
+  const user = await User.findById(req.user._id);
 
-    // if both equal means authentic
-    const isAuthentic = generated_signature===razorpay_signature;
+  const subscription_id = user.subscription.id;
 
-    if(!isAuthentic) return res.redirect(`${process.env.FRONTEND_URL}/paymentfail`)//paymentfailed
+  const generated_signature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_API_SECRET)
+    .update(razorpay_payment_id + "|" + subscription_id, "utf-8")
+    .digest("hex");
 
-    // databse comes here
-    await Payment.create({
-        razorpay_signature, 
-        razorpay_payment_id, 
-        razorpay_subscription_id
-    })
+  const isAuthentic = generated_signature === razorpay_signature;
 
-    user.subscription.status = "active"
+  if (!isAuthentic)
+    return res.redirect(`${process.env.FRONTEND_URL}/paymentfail`);
 
-    await user.save();
+  // database comes here
+  await Payment.create({
+    razorpay_signature,
+    razorpay_payment_id,
+    razorpay_subscription_id,
+  });
 
-    res.redirect(`${process.env.FRONTEND_URL}/paymentsuccess?reference=${razorpay_payment_id}`)
+  user.subscription.status = "active";
+
+  await user.save();
+
+  res.redirect(
+    `${process.env.FRONTEND_URL}/paymentsuccess?reference=${razorpay_payment_id}`
+  );
 });
 
-export const getRazorPayKey = catchAsyncError(async(req,res,next) => {
-    res.status(200).json({
-        success:true,
-        key:process.env.RAZORPAY_API_KEY
-    })
-})
+export const getRazorPayKey = catchAsyncError(async (req, res, next) => {
+  res.status(200).json({
+    success: true,
+    key: process.env.RAZORPAY_API_KEY,
+  });
+});
 
-export const cancelSubscription = catchAsyncError(async(req,res,next) => {
-    const user = await User.findById(req.user._id);
-   
-    const subscriptionId = user.subscription.id;
+export const cancelSubscription = catchAsyncError(async (req, res, next) => {
+  const user = await User.findById(req.user._id);
 
-    let refund=false;
+  const subscriptionId = user.subscription.id;
+  let refund = false;
 
-    await instance.subscriptions.cancel(subscriptionId);
+  await instance.subscriptions.cancel(subscriptionId);
 
-    const payment = await Payment.findOne({
-        razorpay_subscription_id: subscriptionId,
-    });
+  const payment = await Payment.findOne({
+    razorpay_subscription_id: subscriptionId,
+  });
 
-    const gap = Date.now()-payment.createdAt;
+  const gap = Date.now() - payment.createdAt;
 
-    const refundTime = process.env.REFUND_DAYS*24*60*60*1000 //converted into ms
+  const refundTime = process.env.REFUND_DAYS * 24 * 60 * 60 * 1000;
 
-    if(gap<refundTime){
-        await instance.payments.refund(payment.razorpay_payment_id);
-        refund = true;
-    } 
+  if (refundTime > gap) {
+    await instance.payments.refund(payment.razorpay_payment_id);
+    refund = true;
+  }
 
-    // as cancelling subscription so deleting related data from database
-    await payment.remove();
-    user.subscription.id=undefined;
-    user.subscription.status=undefined;
-    await user.save();
+  await payment.remove();
+  user.subscription.id = undefined;
+  user.subscription.status = undefined;
+  await user.save();
 
-    res.status(200).json({
-        success:true,
-        message: refund ? "Subscription cancelled, You will receive full refund within 7days"
-                        : "Subscription cancelled, No refund initiated as subscription was cancelled after 7days"
-    })
-})
+  res.status(200).json({
+    success: true,
+    message: refund
+      ? "Subscription cancelled, You will receive full refund within 7 days."
+      : "Subscription cancelled, Now refund initiated as subscription was cancelled after 7 days.",
+  });
+});

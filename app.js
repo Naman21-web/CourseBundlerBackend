@@ -1,43 +1,40 @@
 import express from "express";
-import {config} from "dotenv";
-import course from "./routes/courseRoutes.js"
-// .js mandatory to write
-import user from "./routes/userRoutes.js"
+import { config } from "dotenv";
 import ErrorMiddleware from "./middlewares/Error.js";
 import cookieParser from "cookie-parser";
-import payment from "./routes/paymentRoutes.js"
-import other from "./routes/otherRoutes.js";
-import cors from "cors"
+import cors from "cors";
 
 config({
-    path:"./config/config.env"
-})
+  path: "./config/config.env",
+});
 const app = express();
 
-// using middlewares //we use this to get data from req.body otherwise we cant use req.body
+// Using Middlewares
 app.use(express.json());
 app.use(
-    express.urlencoded({
-        extended:true,
-    })
-)
-
-// to get token from cookies we use it
+  express.urlencoded({
+    extended: true,
+  })
+);
 app.use(cookieParser());
-
-// to access from frontend
 app.use(
-    cors({
-      origin: process.env.FRONTEND_URL,
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE"],
-    })
-  );
+  cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+  })
+);
 
-app.use("/api/v1",course);
-app.use("/api/v1",user);
-app.use("/api/v1",payment);
-app.use("/api/v1",other);
+// Importing & Using Routes
+import course from "./routes/courseRoutes.js";
+import user from "./routes/userRoutes.js";
+import payment from "./routes/paymentRoutes.js";
+import other from "./routes/otherRoutes.js";
+
+app.use("/api/v1", course);
+app.use("/api/v1", user);
+app.use("/api/v1", payment);
+app.use("/api/v1", other);
 
 export default app;
 
@@ -47,5 +44,4 @@ app.get("/", (req, res) =>
   )
 );
 
-//this is always written at last after al middleware
-app.use(ErrorMiddleware);//when called next and no middleware left then this will be called
+app.use(ErrorMiddleware);
